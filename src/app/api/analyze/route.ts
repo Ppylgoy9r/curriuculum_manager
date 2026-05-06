@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { getLLMProvider } from '@/lib/llm';
 import { NextRequest } from 'next/server';
 
 // POST /api/analyze - Analyze a curriculum using AI
@@ -58,31 +59,21 @@ Please respond ONLY with valid JSON (no markdown, no code blocks) in this exact 
 
 Be thorough and realistic. Consider that technology moves fast - topics from 3+ years ago may need updates.`;
 
-    const response = await fetch('http://localhost:11434/api/generate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'qwen2.5:3b',
-        prompt: `You are a curriculum analysis AI. You must respond with ONLY valid JSON, no markdown formatting, no code blocks, no additional text.\n\n${analysisPrompt}`,
-        stream: false,
-        options: {
-          temperature: 0.3,
-        }
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Ollama API error:', response.status, errorText);
-      return NextResponse.json({ error: 'Failed to analyze curriculum with Ollama API' }, { status: 500 });
-    }
-
-    const ollamaResponse = await response.json();
-
     let analysisResult;
-    const content = ollamaResponse.response || '';
+    let content = '';
+
+    try {
+      const llmProvider = getLLMProvider();
+      const fullPrompt = `You are a curriculum analysis AI. You must respond with ONLY valid JSON, no markdown formatting, no code blocks, no additional text.\n\n${analysisPrompt}`;
+      content = await llmProvider.generate(fullPrompt);
+    } catch (error) {
+      console.error('LLM generation error:', error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      return NextResponse.json(
+        { error: `Failed to generate analysis: ${errorMsg}` },
+        { status: 500 }
+      );
+    }
     
     try {
       // Clean potential markdown code block wrappers
@@ -132,18 +123,27 @@ Be thorough and realistic. Consider that technology moves fast - topics from 3+ 
   } catch (error) {
     console.error('Error analyzing curriculum:', error);
     const message = error instanceof Error ? error.message : String(error);
-    if (message.includes('Configuration file not found or invalid')) {
+    
+    if (message.includes('OLLAMA') || message.includes('Ollama')) {
       return NextResponse.json(
         {
-          error:
-            'Ollama service is not running. Please start Ollama and ensure the qwen2.5:3b model is available.',
+          error: 'Ollama service is not running. Please start Ollama and ensure the qwen2.5:3b model is available.',
+        },
+        { status: 500 }
+      );
+    }
+
+    if (message.includes('API_KEY') || message.includes('unauthorized')) {
+      return NextResponse.json(
+        {
+          error: 'LLM API key is not configured. Please set the appropriate API key in your environment variables.',
         },
         { status: 500 }
       );
     }
 
     return NextResponse.json(
-      { error: 'Failed to analyze curriculum. Please try again.' },
+      { error: `Failed to analyze curriculum: ${message}` },
       { status: 500 }
     );
   }
