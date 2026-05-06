@@ -11,12 +11,13 @@ Work Log:
 - Built 3 API routes:
   - POST/GET/DELETE /api/batch - Batch management
   - POST/GET /api/curriculum/upload - XLS upload, parsing, week-wise extraction
-  - POST /api/analyze - AI-powered curriculum analysis using z-ai-web-dev-sdk
+  - POST /api/analyze - AI-powered curriculum analysis using Ollama with Qwen 2.5 3B model
 - Built complete frontend dashboard with 3 tabs:
   - Batches & Upload: Create batches, upload XLS curricula, view existing curricula
   - Analysis Dashboard: Effectiveness score, comparison charts (bar, radar, line, pie), gap analysis, week-wise table
   - Recommendations: Outdated topics, recommended topics to add, stream mapping, placement insights
 - All charts use Recharts (BarChart, RadarChart, LineChart, PieChart)
+- Local AI integration with Ollama for privacy and cost-free analysis
 - Responsive design with mobile-first approach
 - ESLint passed with no errors
 - Dev server running successfully on port 3000

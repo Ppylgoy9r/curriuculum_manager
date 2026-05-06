@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { NextRequest } from 'next/server';
-import ZAI from 'z-ai-web-dev-sdk';
 
 // POST /api/analyze - Analyze a curriculum using AI
 export async function POST(request: NextRequest) {
@@ -28,8 +27,6 @@ export async function POST(request: NextRequest) {
     const curriculumText = weekData.map((w: { week: number; topics: string[] }) => 
       `Week ${w.week}: ${w.topics.join(', ')}`
     ).join('\n');
-
-    const zai = await ZAI.create();
 
     // Step 1: Analyze curriculum effectiveness and generate scores
     const analysisPrompt = `You are an expert curriculum evaluator and technology trend analyst. Analyze the following curriculum and provide a comprehensive assessment against current industry trends in 2025-2026.
@@ -61,29 +58,38 @@ Please respond ONLY with valid JSON (no markdown, no code blocks) in this exact 
 
 Be thorough and realistic. Consider that technology moves fast - topics from 3+ years ago may need updates.`;
 
-    const response = await zai.chat.completions.create({
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a curriculum analysis AI. You must respond with ONLY valid JSON, no markdown formatting, no code blocks, no additional text.'
-        },
-        {
-          role: 'user',
-          content: analysisPrompt
+    const response = await fetch('http://localhost:11434/api/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'qwen2.5:3b',
+        prompt: `You are a curriculum analysis AI. You must respond with ONLY valid JSON, no markdown formatting, no code blocks, no additional text.\n\n${analysisPrompt}`,
+        stream: false,
+        options: {
+          temperature: 0.3,
         }
-      ],
-      temperature: 0.3,
+      }),
     });
 
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Ollama API error:', response.status, errorText);
+      return NextResponse.json({ error: 'Failed to analyze curriculum with Ollama API' }, { status: 500 });
+    }
+
+    const ollamaResponse = await response.json();
+
     let analysisResult;
-    const content = response.choices[0]?.message?.content || '';
+    const content = ollamaResponse.response || '';
     
     try {
       // Clean potential markdown code block wrappers
       const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       analysisResult = JSON.parse(cleaned);
     } catch (parseError) {
-      console.error('Failed to parse AI response:', content);
+      console.error('Failed to parse Gemini response:', content);
       console.error('Parse error:', parseError);
       return NextResponse.json(
         { error: 'Failed to parse AI analysis. Please try again.' },
@@ -125,6 +131,17 @@ Be thorough and realistic. Consider that technology moves fast - topics from 3+ 
     });
   } catch (error) {
     console.error('Error analyzing curriculum:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('Configuration file not found or invalid')) {
+      return NextResponse.json(
+        {
+          error:
+            'Ollama service is not running. Please start Ollama and ensure the qwen2.5:3b model is available.',
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       { error: 'Failed to analyze curriculum. Please try again.' },
       { status: 500 }
